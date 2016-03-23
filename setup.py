@@ -18,8 +18,8 @@ from setuptools import setup, find_packages
 
 setup(
     name='optimage',
-    version='0.2.0',
-    description='Optimage: Lossless Compressor for PNG and JPEG',
+    version='0.2.1',
+    description='Optimage: Compressor for PNG and JPEG',
     long_description=open('README.rst').read(),
     author='Sebastian Kreft',
     url='http://github.com/sk-/optimage',

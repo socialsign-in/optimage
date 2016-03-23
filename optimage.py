@@ -23,6 +23,31 @@ import tempfile
 
 from PIL import Image
 
+TEMP_DIR=None
+
+def _images_are_similar(filename1,filename2):
+    try:
+        import pHash
+    except FileNotFoundError, fe:
+        logging.info("Could not determine similarity - missing pHash module") 
+        return True
+    
+    hash1 = pHash.imagehash(filename1)
+    hash2 = pHash.imagehash(filename2)
+    hd = pHash.hamming_distance(hash1,hash2)
+    loggin.info('Hamming distance: %d (%08x / %08x)' % ( hd, hash1, hash2 ))
+
+    if hd == 0:
+        return True
+
+    return False
+    
+    """
+    digest1 = pHash.image_digest(filename1, 1.0, 1.0, 180 )
+    digest2 = pHash.image_digest(filename2, 1.0, 1.0, 180 )
+    print 'Cross-correelation: %d' % ( pHash.crosscorr( digest1, digest2 ) )
+    """
+
 
 def _images_are_equal(filename1, filename2):
     # We need to convert both images to the same format, as the resulting one
@@ -35,6 +60,7 @@ def _images_are_equal(filename1, filename2):
 
     img1_bytes = img1.tobytes()
     img2_bytes = img2.tobytes()
+    
 
     if len(img1_bytes) != len(img2_bytes):
         return False
@@ -76,8 +102,11 @@ def _is_png(filename):
     return _check_magic_number(filename, _PNG_MAGIC_NUMBER)
 
 
+"""
+Change this to use the same directory
+"""
 def _get_temporary_filename(prefix='tmp'):
-    temp_file = tempfile.NamedTemporaryFile(prefix=prefix)
+    temp_file = tempfile.NamedTemporaryFile(prefix=prefix,dir=TEMP_DIR)
     temp_name = temp_file.name
     temp_file.close()
 
@@ -99,6 +128,7 @@ class MissingBinary(FileNotFoundError):
 
 
 def _call_binary(args):
+    print "calling %s" % args
     try:
         return subprocess.check_output(args, stderr=subprocess.STDOUT)
     except FileNotFoundError as error:
@@ -109,11 +139,20 @@ def _pngcrush(input_filename, output_filename):
     _call_binary(['pngcrush', '-rem', 'alla', '-reduce', '-brute', '-q',
                   input_filename, output_filename])
 
+def _pngcrush_fast(input_filename, output_filename):
+    _call_binary(['pngcrush',input_filename, output_filename])
+
+def _pngquant(input_filename, output_filename, quality=100):
+    _call_binary(['pngquant', '--force', '--speed', '1', '--quality', str(quality),
+                  '--output', output_filename, input_filename])
 
 def _optipng(input_filename, output_filename):
     _call_binary(['optipng', '-out', output_filename, '-o9', '-quiet',
                   input_filename])
 
+def _phash(input_filename, output_filename):
+    _call_binary(['phash', '-out', output_filename, '-o9', '-quiet',
+                  input_filename])
 
 def _zopflipng(input_filename, output_filename):
     _call_binary(['zopflipng', '-m', '--lossy_8bit', '--lossy_transparent',
@@ -136,21 +175,23 @@ _CompressorResult = collections.namedtuple('_CompressorResult',
                                            ['size', 'filename', 'compressor'])
 
 
-def _process(input_filename, compressor):
+def _process(input_filename, compressor, **kwargs):
     """Helper function to compress an image.
 
     Returns:
       _CompressorResult named tuple, with the resulting size and the temporary
       filename used.
     """
+    print "compressing with %s" % compressor
     result_filename = _get_temporary_filename(prefix=compressor.__name__)
-    compressor(input_filename, result_filename)
+
+    compressor(input_filename, result_filename, **kwargs)
     result_size = os.path.getsize(result_filename)
 
     return _CompressorResult(result_size, result_filename, compressor.__name__)
 
 
-def _compress_with(input_filename, output_filename, compressors):
+def _compress_with(input_filename, output_filename, compressors, **kwargs):
     """Helper function to compress an image with several compressors.
 
     In case the compressors do not improve the filesize or in case the resulting
@@ -158,7 +199,7 @@ def _compress_with(input_filename, output_filename, compressors):
     input.
     """
     results = [
-        _process(input_filename, compressor) for compressor in compressors]
+        _process(input_filename, compressor, **kwargs) for compressor in compressors]
     best_result = min(results)
     os.rename(best_result.filename, output_filename)
 
@@ -166,11 +207,19 @@ def _compress_with(input_filename, output_filename, compressors):
     if (best_result.size >= os.path.getsize(input_filename)):
         best_compressor = None
 
-    if (best_compressor is not None and
-            not _images_are_equal(input_filename, output_filename)):
-        logging.info('Compressor "%s" generated an invalid image for "%s"',
-                     best_compressor, input_filename)
-        best_compressor = None
+    if best_compressor is not None:
+        if best_compressor != '_pngquant':
+            if not _images_are_equal(input_filename, output_filename):
+                logging.info('%s -> %s' % (input_filename,output_filename))
+                logging.info('Compressor "%s" generated an invalid image for "%s"',
+                             best_compressor, input_filename)
+                best_compressor = None
+        else:
+            if not _images_are_similar(input_filename, output_filename):
+                logging.info('%s -> %s' % (input_filename,output_filename))
+                logging.info('Compressor "%s" generated an invalid lossy image for "%s"',
+                             best_compressor, input_filename)
+                best_compressor = None
 
     if best_compressor is None:
         shutil.copy(input_filename, output_filename)

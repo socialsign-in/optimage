@@ -35,7 +35,7 @@ def _images_are_similar(filename1,filename2):
     hash1 = pHash.imagehash(filename1)
     hash2 = pHash.imagehash(filename2)
     hd = pHash.hamming_distance(hash1,hash2)
-    loggin.info('Hamming distance: %d (%08x / %08x)' % ( hd, hash1, hash2 ))
+    logging.info('Hamming distance: %d (%08x / %08x)' % ( hd, hash1, hash2 ))
 
     if hd == 0:
         return True

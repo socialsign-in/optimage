@@ -150,10 +150,6 @@ def _optipng(input_filename, output_filename):
     _call_binary(['optipng', '-out', output_filename, '-o9', '-quiet',
                   input_filename])
 
-def _phash(input_filename, output_filename):
-    _call_binary(['phash', '-out', output_filename, '-o9', '-quiet',
-                  input_filename])
-
 def _zopflipng(input_filename, output_filename):
     _call_binary(['zopflipng', '-m', '--lossy_8bit', '--lossy_transparent',
                   '--filters=0me', input_filename, output_filename])

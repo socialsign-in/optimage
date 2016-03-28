@@ -145,6 +145,15 @@ def _pngcrush_fast(input_filename, output_filename):
 def _pngquant(input_filename, output_filename, quality=100):
     _call_binary(['pngquant', '--force', '--speed', '1', '--quality', str(quality),
                   '--output', output_filename, input_filename])
+"""
+Optimize levels
+-O1
+-O2
+-O3
+"""
+def _gifsicle(input_filename, output_filename, optimize_level=1):
+    _call_binary(['gifsicle', '-o', output_filename, '-O%s' % str(optimize_level),
+                   input_filename])
 
 def _optipng(input_filename, output_filename):
     _call_binary(['optipng', '-out', output_filename, '-o9', '-quiet',
@@ -204,7 +213,7 @@ def _compress_with(input_filename, output_filename, compressors, **kwargs):
         best_compressor = None
 
     if best_compressor is not None:
-        if best_compressor != '_pngquant':
+        if best_compressor not in ['_pngquant','_gifsicle']:
             if not _images_are_equal(input_filename, output_filename):
                 logging.info('%s -> %s' % (input_filename,output_filename))
                 logging.info('Compressor "%s" generated an invalid image for "%s"',

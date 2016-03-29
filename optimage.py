@@ -24,6 +24,7 @@ import tempfile
 from PIL import Image
 
 TEMP_DIR=None
+DEFAULT_SIMILARITY_THRESHOLD=5
 
 def _images_are_similar(filename1,filename2):
     try:
@@ -37,7 +38,7 @@ def _images_are_similar(filename1,filename2):
     hd = pHash.hamming_distance(hash1,hash2)
     logging.info('Hamming distance: %d (%08x / %08x)' % ( hd, hash1, hash2 ))
 
-    if hd == 0:
+    if hd <= DEFAULT_SIMILARITY_THRESHOLD:
         return True
 
     return False

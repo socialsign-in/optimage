@@ -21,10 +21,15 @@ import subprocess
 import sys
 import tempfile
 
+
 from PIL import Image
 
 TEMP_DIR=None
 DEFAULT_SIMILARITY_THRESHOLD=5
+
+
+class CompressionSimilarityError(Exception):
+    pass
 
 def _images_are_similar(filename1,filename2):
     try:
@@ -216,18 +221,18 @@ def _compress_with(input_filename, output_filename, compressors, **kwargs):
     if best_compressor is not None:
         if best_compressor not in ['_pngquant','_gifsicle']:
             if not _images_are_equal(input_filename, output_filename):
-                logging.info('%s -> %s' % (input_filename,output_filename))
-                logging.info('Compressor "%s" generated an invalid image for "%s"',
-                             best_compressor, input_filename)
-                best_compressor = None
+                logging.info('Comparing Equal %s: %s -> %s' % (best_compressor,input_filename,output_filename))
+                shutil.copy(input_filename, output_filename)
+                raise CompressionSimilarityError("compressor %s produced distant files" % best_compressor)
         else:
             if not _images_are_similar(input_filename, output_filename):
-                logging.info('%s -> %s' % (input_filename,output_filename))
-                logging.info('Compressor "%s" generated an invalid lossy image for "%s"',
-                             best_compressor, input_filename)
-                best_compressor = None
+                logging.info('Comparing Similarity %s: %s -> %s' % (best_compressor,input_filename,output_filename))
+                shutil.copy(input_filename, output_filename)
+                raise CompressionSimilarityError("compressor %s produced distant files" % best_compressor)
 
+    
     if best_compressor is None:
+        logging.info("copying %s -> %s becuase we had no compression" % (input_filename, output_filename))
         shutil.copy(input_filename, output_filename)
 
     logging.info('%s: best compressor for "%s"', best_compressor,

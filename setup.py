@@ -18,7 +18,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='optimage',
-    version='2.2.3',
+    version='2.2.4',
     description='Optimage: Compressor for PNG, JPEG, and GIF',
     long_description=open('README.rst').read(),
     author='Sebastian Kreft',

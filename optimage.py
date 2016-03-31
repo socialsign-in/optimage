@@ -25,7 +25,8 @@ import tempfile
 from PIL import Image
 
 TEMP_DIR=None
-DEFAULT_SIMILARITY_THRESHOLD=5
+SIMILARITY_THRESHOLD=5
+
 
 
 class CompressionSimilarityError(Exception):
@@ -43,7 +44,7 @@ def _images_are_similar(filename1,filename2):
     hd = pHash.hamming_distance(hash1,hash2)
     logging.info('Hamming distance: %d (%08x / %08x)' % ( hd, hash1, hash2 ))
 
-    if hd <= DEFAULT_SIMILARITY_THRESHOLD:
+    if hd <= SIMILARITY_THRESHOLD:
         return True
 
     return False
@@ -157,8 +158,8 @@ Optimize levels
 -O2
 -O3
 """
-def _gifsicle(input_filename, output_filename, optimize_level=1):
-    _call_binary(['gifsicle', '-o', output_filename, '-O%s' % str(optimize_level),
+def _gifsicle(input_filename, output_filename, lossy=100, optimize_level=3):
+    _call_binary(['gifsicle', '--lossy=%s' % str(lossy), '-o', output_filename, '-O%s' % str(optimize_level),
                    input_filename])
 
 def _optipng(input_filename, output_filename):
@@ -219,7 +220,13 @@ def _compress_with(input_filename, output_filename, compressors, **kwargs):
         best_compressor = None
 
     if best_compressor is not None:
-        if best_compressor not in ['_pngquant','_gifsicle']:
+        if not SIMILARITY_THRESHOLD:
+            logging.info("Not comparing images because Similarity threshold is 0")
+            logging.info('%s: best compressor for "%s"', best_compressor,
+                 input_filename)
+            return
+
+        if best_compressor not in ['_pngquant', '_gifsicle']:
             if not _images_are_equal(input_filename, output_filename):
                 logging.info('Comparing Equal %s: %s -> %s' % (best_compressor,input_filename,output_filename))
                 shutil.copy(input_filename, output_filename)

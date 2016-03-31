@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import re
 
 
 from PIL import Image
@@ -135,7 +136,6 @@ class MissingBinary(FileNotFoundError):
 
 
 def _call_binary(args):
-    print "calling %s" % args
     try:
         return subprocess.check_output(args, stderr=subprocess.STDOUT)
     except FileNotFoundError as error:
@@ -152,14 +152,79 @@ def _pngcrush_fast(input_filename, output_filename):
 def _pngquant(input_filename, output_filename, quality=100):
     _call_binary(['pngquant', '--force', '--speed', '1', '--quality', str(quality),
                   '--output', output_filename, input_filename])
+
+
+def _parse_gifsicle_frame_line(line):
+    if 'delay' in line:
+        delay = float(line.split()[-1].replace('s',''))
+        return { 'delay': delay }
+    elif 'compressed' in line:
+        size = int(line.split()[-1].replace('s',''))
+        return { 'size': size }
+    if '+' in line:
+        image_info = line.split() 
+        res = {}
+        m = re.search('\+ +image (?P<index>#[0-9]+) (?P<dimensions>\d*x\d*)? ?(at (?P<offset>\d,\d))? ?(?P<bg>\w+) ?(?P<colors>\d+)',line) 
+        for grouping in ['index','dimensions','offset','bg','colors']:
+            try:
+                res[grouping] = m.group(grouping)
+            except IndexError:
+                pass
+        return res 
+         
+
+        
+        
+
+def _gifsicle_info(input_filename):
+    result = _call_binary(['gifsicle', '--sinfo', input_filename])
+    data = result.split("\n")
+    frames = []
+    file_data = {} 
+    screen_parts = data[1].split()
+    color_parts = data[2].split()
+    bg_parts = data[3].split()
+    
+    width,height = screen_parts[2].split('x')
+    file_data['width'] = int(width)
+    file_data['height'] = int(height)
+   
+    frame_data = data[4:]
+    frames_index = 0
+    
+    while frames_index < len(frame_data)-1:
+         
+        res = _parse_gifsicle_frame_line(frame_data[frames_index])
+        if not res:
+            frames_index += 1
+            continue
+        if 'index' in res: 
+            frames.append(res.copy()) 
+        else:
+            frames[-1].update(res)
+            
+        frames_index += 1
+        
+    
+    file_data['frames'] = frames
+    return file_data
+
+
 """
 Optimize levels
 -O1
 -O2
 -O3
 """
-def _gifsicle(input_filename, output_filename, lossy=100, optimize_level=3):
-    _call_binary(['gifsicle', '--lossy=%s' % str(lossy), '-o', output_filename, '-O%s' % str(optimize_level),
+def _gifsicle(input_filename, output_filename, lossy=80, optimize_level=3, resize=None, crop=None, frame_reduce=1):
+    if resize:
+        _call_binary(['gifsicle', '--resize-fit-width=%s' % str(resize[0]), '--resize-fit-height=%s' % str(resize[1]), '-o', output_filename, 
+                   input_filename])
+    elif crop:
+        _call_binary(['gifsicle', '--crop=%s,%s-%s,%s' % (crop[0],crop[1],crop[2],crop[3]), '-o', output_filename, 
+                   input_filename])
+    else:
+        _call_binary(['gifsicle', '--lossy=%s' % str(lossy), '-o', output_filename, '-O%s' % str(optimize_level),
                    input_filename])
 
 def _optipng(input_filename, output_filename):
@@ -194,7 +259,6 @@ def _process(input_filename, compressor, **kwargs):
       _CompressorResult named tuple, with the resulting size and the temporary
       filename used.
     """
-    print "compressing with %s" % compressor
     result_filename = _get_temporary_filename(prefix=compressor.__name__)
 
     compressor(input_filename, result_filename, **kwargs)
@@ -202,6 +266,28 @@ def _process(input_filename, compressor, **kwargs):
 
     return _CompressorResult(result_size, result_filename, compressor.__name__)
 
+
+def modify_size(input_filename, compressor, **kwargs):
+    result = _process(input_filename, compressor, **kwargs) 
+    newfile_info = _gifsicle_info(result.filename)
+
+    if kwargs.get('resize'):
+        if newfile_info['width'] == kwargs.get('resize')[0] and newfile_info['height'] == kwargs.get('resize')[1]:
+            shutil.copyfile(result.filename, input_filename)
+        else:
+            logging.info("Failed to resize properly")
+    elif kwargs.get('crop'):
+        crop_info = kwargs.get('crop')
+        exp_height = crop_info[2]-crop_info[0]
+        exp_width = crop_info[3]-crop_info[1]
+        if newfile_info['width'] == exp_width and newfile_info['height'] == exp_height:
+            shutil.copyfile(result.filename, input_filename)
+        else:
+            logging.info("Failed to crop properly")
+
+        
+         
+    return (input_filename,newfile_info['width'],newfile_info['height']) 
 
 def _compress_with(input_filename, output_filename, compressors, **kwargs):
     """Helper function to compress an image with several compressors.
